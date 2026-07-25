@@ -28,6 +28,9 @@ Para validar a versão de produção:
 npm run build
 ```
 
+O comando padrão usa o build nativo do Next.js e é compatível com a Vercel.
+Para publicar pela infraestrutura Sites/Cloudflare, use `npm run build:sites`.
+
 ## Limitação atual
 
 PDFs escaneados ou com cifras convertidas em imagens/vetores exigem um módulo
