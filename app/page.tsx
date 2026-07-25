@@ -51,6 +51,7 @@ export default function Home() {
   const [step, setStep] = useState(0);
   const [detectedCount, setDetectedCount] = useState(0);
   const [notice, setNotice] = useState("");
+  const [exporting, setExporting] = useState(false);
 
   function chooseFile(selected?: File) {
     if (selected?.type === "application/pdf" || selected?.name.endsWith(".pdf")) {
@@ -89,69 +90,79 @@ export default function Home() {
   }
 
   async function downloadPDF() {
-    if (!file) return;
+    if (!file || exporting) return;
+    setExporting(true);
     setNotice("Gerando o novo PDF…");
-    const [{ PDFDocument, StandardFonts, rgb }, pdfjs] = await Promise.all([
+    try {
+      const [{ PDFDocument, StandardFonts, rgb }, pdfjs] = await Promise.all([
       import("pdf-lib"),
       import("pdfjs-dist/legacy/build/pdf.mjs"),
-    ]);
-    pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/legacy/build/pdf.worker.min.mjs", import.meta.url).toString();
-    const originalBytes = new Uint8Array(await file.arrayBuffer());
-    const source = await pdfjs.getDocument({ data: originalBytes.slice() }).promise;
-    const output = await PDFDocument.load(originalBytes);
-    const bold = await output.embedFont(StandardFonts.HelveticaBold);
-    const mono = await output.embedFont(StandardFonts.CourierBold);
-    const from = chromatic.indexOf(normalizeKey(originalKey));
-    const to = chromatic.indexOf(normalizeKey(key));
-    const semitones = (to - from + 12) % 12;
-    let replacements = 0;
+      ]);
+      pdfjs.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/legacy/build/pdf.worker.min.mjs", import.meta.url).toString();
+      const originalBytes = new Uint8Array(await file.arrayBuffer());
+      const source = await pdfjs.getDocument({ data: originalBytes.slice() }).promise;
+      const output = await PDFDocument.load(originalBytes);
+      const bold = await output.embedFont(StandardFonts.HelveticaBold);
+      const mono = await output.embedFont(StandardFonts.CourierBold);
+      const from = chromatic.indexOf(normalizeKey(originalKey));
+      const to = chromatic.indexOf(normalizeKey(key));
+      const semitones = (to - from + 12) % 12;
+      let replacements = 0;
 
-    for (let pageNumber = 1; pageNumber <= source.numPages; pageNumber += 1) {
-      const sourcePage = await source.getPage(pageNumber);
-      const content = await sourcePage.getTextContent();
-      const targetPage = output.getPage(pageNumber - 1);
-      for (const rawItem of content.items) {
-        if (!("str" in rawItem) || !("transform" in rawItem)) continue;
-        const changed = transposeChordLine(rawItem.str, semitones);
-        if (!changed.found || changed.text === rawItem.str) continue;
-        const x = rawItem.transform[4];
-        const y = rawItem.transform[5];
-        const size = Math.max(7, Math.min(18, Math.abs(rawItem.height || rawItem.transform[3]) || 10));
-        const width = Math.max(rawItem.width || bold.widthOfTextAtSize(rawItem.str, size), bold.widthOfTextAtSize(changed.text, size)) + 3;
-        targetPage.drawRectangle({ x: x - 1, y: y - 2, width, height: size + 5, color: rgb(1, 1, 1) });
-        targetPage.drawText(changed.text, { x, y, size, font: bold, color: rgb(0.08, 0.16, 0.13) });
-        replacements += changed.found;
+      for (let pageNumber = 1; pageNumber <= source.numPages; pageNumber += 1) {
+        const sourcePage = await source.getPage(pageNumber);
+        const content = await sourcePage.getTextContent();
+        const targetPage = output.getPage(pageNumber - 1);
+        for (const rawItem of content.items) {
+          if (!("str" in rawItem) || !("transform" in rawItem)) continue;
+          const changed = transposeChordLine(rawItem.str, semitones);
+          if (!changed.found || changed.text === rawItem.str) continue;
+          const x = rawItem.transform[4];
+          const y = rawItem.transform[5];
+          const size = Math.max(7, Math.min(18, Math.abs(rawItem.height || rawItem.transform[3]) || 10));
+          const width = Math.max(rawItem.width || bold.widthOfTextAtSize(rawItem.str, size), bold.widthOfTextAtSize(changed.text, size)) + 3;
+          targetPage.drawRectangle({ x: x - 1, y: y - 2, width, height: size + 5, color: rgb(1, 1, 1) });
+          targetPage.drawText(changed.text, { x, y, size, font: bold, color: rgb(0.08, 0.16, 0.13) });
+          replacements += changed.found;
+        }
       }
-    }
 
-    const tabPage = output.addPage([595.28, 841.89]);
-    tabPage.drawText("CLAVE — FRASES DE CONTRABAIXO", { x: 48, y: 786, size: 17, font: bold, color: rgb(0.08, 0.16, 0.13) });
-    tabPage.drawText(`Tom: ${normalizeKey(key)}   |   Baixo de 4 cordas: E-A-D-G   |   Estilo: ${style}`, { x: 48, y: 760, size: 10, font: bold });
-    tabPage.drawText("Use as frases nas transicoes entre secoes. Ajuste o ritmo ao groove da musica.", { x: 48, y: 738, size: 9, font: bold, color: rgb(0.35, 0.4, 0.36) });
-    const tonic = to;
-    const fifth = (tonic + 7) % 12;
-    const octaveFret = (tonic - 4 + 12) % 12;
-    const fifthFret = (fifth - 9 + 12) % 12;
-    const phrases = [
+      const tabPage = output.addPage([595.28, 841.89]);
+      tabPage.drawText("CLAVE — FRASES DE CONTRABAIXO", { x: 48, y: 786, size: 17, font: bold, color: rgb(0.08, 0.16, 0.13) });
+      tabPage.drawText(`Tom: ${normalizeKey(key)}   |   Baixo de 4 cordas: E-A-D-G   |   Estilo: ${style}`, { x: 48, y: 760, size: 10, font: bold });
+      tabPage.drawText("Use as frases nas transicoes entre secoes. Ajuste o ritmo ao groove da musica.", { x: 48, y: 738, size: 9, font: bold, color: rgb(0.35, 0.4, 0.36) });
+      const tonic = to;
+      const fifth = (tonic + 7) % 12;
+      const octaveFret = (tonic - 4 + 12) % 12;
+      const fifthFret = (fifth - 9 + 12) % 12;
+      const phrases = [
       ["FRASE 1 — entrada / verso", `G|----------------|`, `D|------------${String(fifthFret).padStart(2, "-")}-|`, `A|------${String(fifthFret).padStart(2, "-")}--------|`, `E|-${String(octaveFret).padStart(2, "-")}--${String(octaveFret + 2).padStart(2, "-")}-----------|`],
       ["FRASE 2 — ligacao para o refrao", `G|-------------${String((tonic - 7 + 12) % 12).padStart(2, "-")}-|`, `D|------${String(fifthFret).padStart(2, "-")}--${String(fifthFret + 2).padStart(2, "-")}----|`, `A|-${String(fifthFret).padStart(2, "-")}--------------|`, `E|----------------|`],
       ["FRASE 3 — final de secao", `G|----------------|`, `D|-${String(fifthFret).padStart(2, "-")}--${String(fifthFret + 2).padStart(2, "-")}--${String(fifthFret + 4).padStart(2, "-")}-----|`, `A|-------------${String(fifthFret).padStart(2, "-")}-|`, `E|----------------|`],
-    ];
-    phrases.forEach((phrase, index) => {
-      const top = 680 - index * 175;
-      phrase.forEach((line, lineIndex) => tabPage.drawText(line, { x: 60, y: top - lineIndex * 24, size: lineIndex ? 13 : 11, font: lineIndex ? mono : bold, color: lineIndex ? rgb(0.08, 0.16, 0.13) : rgb(0.9, 0.37, 0.18) }));
-    });
-    tabPage.drawText("Tablatura sugerida: valide digitacao, tessitura e contexto harmonico antes da apresentacao.", { x: 48, y: 80, size: 8, font: bold, color: rgb(0.4, 0.43, 0.4) });
+      ];
+      phrases.forEach((phrase, index) => {
+        const top = 680 - index * 175;
+        phrase.forEach((line, lineIndex) => tabPage.drawText(line, { x: 60, y: top - lineIndex * 24, size: lineIndex ? 13 : 11, font: lineIndex ? mono : bold, color: lineIndex ? rgb(0.08, 0.16, 0.13) : rgb(0.9, 0.37, 0.18) }));
+      });
+      tabPage.drawText("Tablatura sugerida: valide digitacao, tessitura e contexto harmonico antes da apresentacao.", { x: 48, y: 80, size: 8, font: bold, color: rgb(0.4, 0.43, 0.4) });
 
-    const pdfBytes = await output.save();
-    const blob = new Blob([pdfBytes as BlobPart], { type: "application/pdf" });
-    const url = URL.createObjectURL(blob);
-    const anchor = document.createElement("a");
-    anchor.href = url;
-    anchor.download = `${file.name.replace(/\.pdf$/i, "")}-${key.replace("♯", "s").replace("♭", "b")}-com-baixo.pdf`;
-    anchor.click();
-    URL.revokeObjectURL(url);
-    setNotice(`PDF criado com ${replacements} cifra${replacements === 1 ? "" : "s"} transposta${replacements === 1 ? "" : "s"} e uma página de tablaturas.`);
+      const pdfBytes = await output.save();
+      const blob = new Blob([pdfBytes as BlobPart], { type: "application/pdf" });
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = `${file.name.replace(/\.pdf$/i, "")}-${key.replace("♯", "s").replace("♭", "b")}-com-baixo.pdf`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+      setNotice(`Download iniciado: ${replacements} cifra${replacements === 1 ? "" : "s"} transposta${replacements === 1 ? "" : "s"} e uma página de tablaturas.`);
+    } catch (error) {
+      console.error(error);
+      setNotice("Não foi possível gerar o download deste PDF. Verifique se o arquivo não está protegido por senha e tente novamente.");
+    } finally {
+      setExporting(false);
+    }
   }
 
   return (
@@ -228,10 +239,11 @@ export default function Home() {
           )}
           {notice && <p className={`notice ${detectedCount ? "ok" : ""}`}>{notice}</p>}
 
-          <button className="primaryBtn" onClick={analyze} disabled={!file || status === "reading"}>
-            <span>{status === "reading" ? "Lendo partitura…" : status === "ready" ? "Criar outra versão" : "Interpretar e transpor"}</span>
-            <b>→</b>
+          <button className="primaryBtn" onClick={status === "ready" ? downloadPDF : analyze} disabled={!file || status === "reading" || exporting}>
+            <span>{exporting ? "Gerando o PDF…" : status === "reading" ? "Lendo partitura…" : status === "ready" ? "Baixar PDF com tablatura" : "Interpretar e transpor"}</span>
+            <b>{status === "ready" ? "↓" : "→"}</b>
           </button>
+          {status === "ready" && <button className="resetBtn" type="button" onClick={() => { setStatus("idle"); setNotice(""); }}>Alterar tom ou criar outra versão</button>}
         </div>
       </section>
 
@@ -239,7 +251,7 @@ export default function Home() {
         <section className="result" aria-live="polite">
           <div className="resultHead">
             <div><span className="success">✓ CIFRAS RECONHECIDAS</span><h2>Seu novo PDF está pronto.</h2><p>De {originalKey} para {key} · Tablatura E–A–D–G · {bass}% de detalhes</p></div>
-            <button onClick={downloadPDF}>Baixar PDF com tablatura <span>↓</span></button>
+            <button onClick={downloadPDF} disabled={exporting}>{exporting ? "Gerando PDF…" : "Baixar PDF com tablatura"} <span>↓</span></button>
           </div>
           <div className="sheet">
             <div className="sheetMeta"><span>{file?.name.replace(/\.pdf$/i, "")}</span><small>Arranjo Clave · Tom de {key}</small></div>

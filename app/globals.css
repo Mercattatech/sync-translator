@@ -46,6 +46,7 @@ input[type=range] { accent-color:var(--orange); margin:9px 0 0; }
 .primaryBtn:hover:not(:disabled) { background:#ca4a20; }
 .primaryBtn:disabled { opacity:.45; cursor:not-allowed; }
 .primaryBtn b { font-size:22px; }
+.resetBtn { width:100%; border:0; background:transparent; color:#536258; padding:14px 8px 0; font-size:10px; font-weight:800; text-decoration:underline; text-underline-offset:3px; }
 .progressBox { border-top:1px solid #e4ded1; padding:18px 0 20px; }
 .progressBox>div:first-child { display:flex; gap:10px; align-items:center; font-size:11px; }
 .progressBox b:last-child { margin-left:auto; color:var(--orange); }
