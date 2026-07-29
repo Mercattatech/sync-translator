@@ -4,7 +4,7 @@
 * { box-sizing:border-box; }
 html { scroll-behavior:smooth; }
 body { margin:0; background:var(--paper); color:var(--ink); font-family:Arial, Helvetica, sans-serif; }
-button, select, input { font:inherit; }
+button, select, input, textarea { font:inherit; }
 button, .dropzone { cursor:pointer; }
 .topbar { height:82px; display:flex; align-items:center; justify-content:space-between; padding:0 5vw; border-bottom:1px solid rgba(20,40,32,.15); position:relative; z-index:2; }
 .brand { display:flex; align-items:center; gap:10px; color:var(--ink); text-decoration:none; font-weight:900; letter-spacing:.18em; font-size:15px; }
@@ -25,6 +25,25 @@ h1 em { color:var(--orange); font-weight:500; }
 .staff { position:absolute; left:-120px; top:15px; opacity:.25; transform:rotate(-5deg); display:flex; gap:30px; align-items:center; font-family:Georgia; font-size:26px; }
 .staff span { font-size:70px; }.staff i { width:220px; height:38px; background:repeating-linear-gradient(to bottom,var(--ink) 0 1px,transparent 1px 9px); }
 .staff b { position:relative; left:-235px; }
+.nashvilleConverter { border:1px solid var(--ink); padding:20px; margin-bottom:24px; background:#f8f4eb; }
+.converterHead { display:flex; justify-content:space-between; align-items:center; margin-bottom:17px; }
+.converterHead>div { display:flex; flex-direction:column; gap:4px; }
+.converterHead span { font-size:9px; font-weight:900; letter-spacing:.17em; color:var(--orange); }
+.converterHead strong { font:500 22px Georgia,serif; }
+.converterHead button { border:1px solid var(--ink); background:transparent; padding:9px 11px; font-size:9px; font-weight:900; }
+.converterHead input { display:none; }
+.nashvilleConverter textarea { width:100%; min-height:105px; resize:vertical; border:1px solid #b9bcb4; background:white; padding:14px; color:var(--ink); font:700 14px/1.7 "Courier New",monospace; }
+.converterActions { display:grid; grid-template-columns:180px 1fr; gap:12px; margin-top:14px; align-items:end; }
+.converterActions button { height:44px; border:0; background:var(--ink); color:white; padding:0 16px; display:flex; justify-content:space-between; align-items:center; font-size:10px; font-weight:900; letter-spacing:.08em; }
+.converterActions button:disabled { opacity:.4; cursor:not-allowed; }
+.convertedChart { margin-top:16px; background:white; border-left:4px solid var(--orange); padding:15px; }
+.convertedChart>span { font-size:9px; font-weight:900; letter-spacing:.15em; color:#667168; }
+.convertedChart pre { margin:13px 0; white-space:pre-wrap; font:700 15px/1.8 "Courier New",monospace; color:var(--ink); }
+.convertedChart>div { display:flex; gap:8px; }
+.convertedChart button { border:1px solid var(--ink); background:transparent; padding:8px 11px; color:var(--ink); font-size:9px; font-weight:900; }
+.converterNotice { display:block; margin-top:12px; color:#667168; font-size:9px; }
+.orDivider { display:flex; align-items:center; gap:12px; margin:6px 0 20px; color:#849087; font-size:8px; font-weight:900; letter-spacing:.14em; }
+.orDivider:before,.orDivider:after { content:""; height:1px; flex:1; background:#d4d0c7; }
 .dropzone { min-height:116px; border:1px dashed #829087; display:flex; align-items:center; padding:26px 30px; gap:20px; transition:.2s; position:relative; background:rgba(244,240,231,.45); }
 .dropzone:hover,.dropzone.hasFile { border-color:var(--orange); background:#fff8ef; }
 .dropzone input { display:none; }
@@ -93,6 +112,8 @@ footer p { font:italic 15px Georgia,serif; } footer small { color:#6b756f; font-
   .hero { padding:55px 18px 75px; }.hero:after { font-size:380px; }
   h1 { font-size:47px; }.lead { font-size:14px; }
   .studioCard { padding:15px; box-shadow:7px 7px 0 rgba(20,40,32,.12); }
+  .converterHead { align-items:flex-start; gap:12px; }.converterHead strong { font-size:18px; }.converterHead button { white-space:nowrap; }
+  .converterActions { grid-template-columns:1fr; }
   .dropzone { padding:20px 15px; gap:12px; }.dropzone strong { font-size:15px; }.pdfPill { display:none; }
   .controls,.controls.fourControls { grid-template-columns:1fr; gap:17px; }
   .result { padding:60px 18px; }.resultHead { align-items:flex-start; flex-direction:column; }.resultHead button { width:100%; margin-top:18px; }

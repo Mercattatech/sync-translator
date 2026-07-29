@@ -6,6 +6,8 @@ const keys = ["C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B�
 const chromatic = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
 const noteValues: Record<string, number> = { C:0, "C#":1, Db:1, D:2, "D#":3, Eb:3, E:4, F:5, "F#":6, Gb:6, G:7, "G#":8, Ab:8, A:9, "A#":10, Bb:10, B:11 };
 const nashvilleDegrees = ["1", "♭2", "2", "♭3", "3", "4", "♯4", "5", "♭6", "6", "♭7", "7"];
+const majorScale = [0, 2, 4, 5, 7, 9, 11];
+const nashvilleTokenPattern = /^([♭b♯#]?)([1-7])([^/\s|]*)(?:\/([♭b♯#]?)([1-7]))?$/;
 const chordPattern = /^[A-G](?:#|b)?(?:m|maj|min|dim|aug|sus|add)?(?:2|4|5|6|7|9|11|13)?(?:\([^)]*\))?(?:\/[A-G](?:#|b)?)?$/;
 const steps = [
   "Lendo textos e posições do PDF",
@@ -48,6 +50,28 @@ function chordFromNashville(chord: string, sourceKey: string, targetKey: string)
   return `${root}${parsed.quality}${bass}`;
 }
 
+function noteFromDegree(accidental: string, degree: string, targetKey: string) {
+  const alteration = accidental === "♭" || accidental === "b" ? -1 : accidental === "♯" || accidental === "#" ? 1 : 0;
+  const tonic = noteValues[normalizeKey(targetKey)];
+  return chromatic[(tonic + majorScale[Number(degree) - 1] + alteration + 12) % 12];
+}
+
+function nashvilleTokenToChord(token: string, targetKey: string) {
+  const match = token.match(nashvilleTokenPattern);
+  if (!match) return token;
+  const root = noteFromDegree(match[1], match[2], targetKey);
+  const quality = match[3] || "";
+  const bass = match[5] ? `/${noteFromDegree(match[4], match[5], targetKey)}` : "";
+  return `${root}${quality}${bass}`;
+}
+
+function convertNashvilleText(text: string, targetKey: string) {
+  return text
+    .split(/(\s+|\|)/)
+    .map((part) => nashvilleTokenToChord(part, targetKey))
+    .join("");
+}
+
 function transposeChordLine(text: string, sourceKey: string, targetKey: string) {
   const parts = text.split(/(\s+|\|)/);
   let found = 0;
@@ -63,6 +87,7 @@ function transposeChordLine(text: string, sourceKey: string, targetKey: string) 
 
 export default function Home() {
   const inputRef = useRef<HTMLInputElement>(null);
+  const nashvilleFileRef = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [originalKey, setOriginalKey] = useState("C");
   const [key, setKey] = useState("G");
@@ -74,6 +99,9 @@ export default function Home() {
   const [notice, setNotice] = useState("");
   const [exporting, setExporting] = useState(false);
   const [detectedChords, setDetectedChords] = useState<string[]>([]);
+  const [nashvilleInput, setNashvilleInput] = useState("1 | 6m | 4 | 5\n1/3 | 4maj7 | 2m7 | 5sus4");
+  const [nashvilleResult, setNashvilleResult] = useState("");
+  const [nashvilleNotice, setNashvilleNotice] = useState("");
   const nashvillePreview = detectedChords.map((chord) => chordToNashville(chord, originalKey));
 
   function chooseFile(selected?: File) {
@@ -81,6 +109,55 @@ export default function Home() {
       setFile(selected);
       setStatus("idle");
     }
+  }
+
+  async function chooseNashvilleFile(selected?: File) {
+    if (!selected) return;
+    const text = await selected.text();
+    setNashvilleInput(text);
+    setNashvilleResult("");
+    setNashvilleNotice(`${selected.name} carregado. Escolha o tom e converta.`);
+  }
+
+  function convertNashville() {
+    if (!nashvilleInput.trim()) return;
+    setNashvilleResult(convertNashvilleText(nashvilleInput, key));
+    setNashvilleNotice(`Cifra Nashville convertida corretamente para o tom de ${key}.`);
+  }
+
+  async function copyNashvilleResult() {
+    await navigator.clipboard.writeText(nashvilleResult);
+    setNashvilleNotice("Cifra copiada.");
+  }
+
+  async function downloadNashvillePDF() {
+    if (!nashvilleResult) return;
+    const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
+    const pdf = await PDFDocument.create();
+    const page = pdf.addPage([595.28, 841.89]);
+    const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+    const mono = await pdf.embedFont(StandardFonts.CourierBold);
+    page.drawText("CLAVE — CIFRA CONVERTIDA", { x: 48, y: 790, size: 18, font: bold, color: rgb(0.08, 0.16, 0.13) });
+    page.drawText(`Sistema Nashville convertido para o tom de ${normalizeKey(key)}`, { x: 48, y: 762, size: 10, font: bold, color: rgb(0.9, 0.37, 0.18) });
+    const lines = nashvilleResult.split("\n").flatMap((line) => {
+      if (line.length <= 68) return [line];
+      const chunks: string[] = [];
+      for (let index = 0; index < line.length; index += 68) chunks.push(line.slice(index, index + 68));
+      return chunks;
+    });
+    lines.slice(0, 28).forEach((line, index) => {
+      page.drawText(line || " ", { x: 48, y: 720 - index * 22, size: 12, font: mono, color: rgb(0.08, 0.16, 0.13) });
+    });
+    const bytes = await pdf.save();
+    const url = URL.createObjectURL(new Blob([bytes as BlobPart], { type: "application/pdf" }));
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `cifra-nashville-tom-${key.replace("♯", "s").replace("♭", "b")}.pdf`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    anchor.remove();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1500);
+    setNashvilleNotice("Download do PDF iniciado.");
   }
 
   async function analyze() {
@@ -215,6 +292,35 @@ export default function Home() {
 
         <div className="studioCard">
           <div className="staff staffTop" aria-hidden="true"><span>𝄞</span><i></i><b>♩</b><b>♪</b><b>𝅗𝅥</b></div>
+          <div className="nashvilleConverter">
+            <div className="converterHead">
+              <div><span>CONVERSOR NASHVILLE</span><strong>Dos números para a cifra.</strong></div>
+              <button type="button" onClick={() => nashvilleFileRef.current?.click()}>↑ Subir arquivo .txt</button>
+              <input ref={nashvilleFileRef} type="file" accept=".txt,.nns,text/plain" onChange={(event) => chooseNashvilleFile(event.target.files?.[0])} />
+            </div>
+            <label>
+              <span>COLE OU EDITE A CIFRA NASHVILLE</span>
+              <textarea value={nashvilleInput} onChange={(event) => { setNashvilleInput(event.target.value); setNashvilleResult(""); }} placeholder="Ex.: 1 | 6m | 4 | 5&#10;1/3 | 4maj7 | 2m7 | 5sus4" />
+            </label>
+            <div className="converterActions">
+              <label>
+                <span>CONVERTER PARA O TOM</span>
+                <select value={key} onChange={(event) => { setKey(event.target.value); setNashvilleResult(""); }}>
+                  {keys.map((item) => <option key={item}>{item}</option>)}
+                </select>
+              </label>
+              <button type="button" onClick={convertNashville} disabled={!nashvilleInput.trim()}>Converter em cifras <b>→</b></button>
+            </div>
+            {nashvilleResult && (
+              <div className="convertedChart" aria-live="polite">
+                <span>CIFRA NO TOM DE {key}</span>
+                <pre>{nashvilleResult}</pre>
+                <div><button type="button" onClick={copyNashvilleResult}>Copiar cifra</button><button type="button" onClick={downloadNashvillePDF}>Baixar PDF</button></div>
+              </div>
+            )}
+            {nashvilleNotice && <small className="converterNotice">{nashvilleNotice}</small>}
+          </div>
+          <div className="orDivider"><span>OU TRANSPONHA UM PDF CIFRADO</span></div>
           <div
             className={`dropzone ${file ? "hasFile" : ""}`}
             onClick={() => inputRef.current?.click()}
