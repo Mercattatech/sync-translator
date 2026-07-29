@@ -54,6 +54,11 @@ input[type=range] { accent-color:var(--orange); margin:9px 0 0; }
 .progress { height:3px; background:#e4ded1; margin-top:12px; }.progress i { display:block; background:var(--orange); height:100%; transition:.4s; }
 .notice { margin:0 0 18px; padding:12px 14px; background:#f5e5dc; color:#8b3e25; font-size:11px; line-height:1.5; }
 .notice.ok { background:#e4ebe0; color:#324b37; }
+.nashvilleBox { border:1px solid #c9c9bf; background:#f8f4eb; margin:0 0 18px; padding:15px; }
+.nashvilleBox>span { display:block; font-size:9px; font-weight:900; letter-spacing:.16em; color:#59665e; margin-bottom:11px; }
+.nashvilleBox>div { display:flex; flex-wrap:wrap; gap:6px; }
+.nashvilleBox b { min-width:34px; padding:8px 9px; background:var(--ink); color:white; text-align:center; font:700 13px Georgia,serif; }
+.nashvilleBox small { display:block; margin-top:10px; color:#78817b; font-size:9px; }
 @keyframes pulse { 50% { opacity:.25; } }
 .result { padding:85px 8vw; background:var(--ink); color:#f8f4eb; }
 .resultHead { display:flex; justify-content:space-between; align-items:end; max-width:1100px; margin:0 auto 35px; }

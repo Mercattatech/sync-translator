@@ -4,6 +4,8 @@ import { useRef, useState } from "react";
 
 const keys = ["C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B"];
 const chromatic = ["C", "C#", "D", "Eb", "E", "F", "F#", "G", "Ab", "A", "Bb", "B"];
+const noteValues: Record<string, number> = { C:0, "C#":1, Db:1, D:2, "D#":3, Eb:3, E:4, F:5, "F#":6, Gb:6, G:7, "G#":8, Ab:8, A:9, "A#":10, Bb:10, B:11 };
+const nashvilleDegrees = ["1", "♭2", "2", "♭3", "3", "4", "♯4", "5", "♭6", "6", "♭7", "7"];
 const chordPattern = /^[A-G](?:#|b)?(?:m|maj|min|dim|aug|sus|add)?(?:2|4|5|6|7|9|11|13)?(?:\([^)]*\))?(?:\/[A-G](?:#|b)?)?$/;
 const steps = [
   "Lendo textos e posições do PDF",
@@ -17,23 +19,42 @@ function normalizeKey(value: string) {
   return value.replace("♯", "#").replace("♭", "b");
 }
 
-function transposeNote(note: string, semitones: number) {
-  const aliases: Record<string, number> = { C:0, "C#":1, Db:1, D:2, "D#":3, Eb:3, E:4, F:5, "F#":6, Gb:6, G:7, "G#":8, Ab:8, A:9, "A#":10, Bb:10, B:11 };
-  const index = aliases[note];
-  return chromatic[(index + semitones + 12) % 12];
+function parseChord(chord: string) {
+  const match = chord.match(/^([A-G](?:#|b)?)([^/]*)(?:\/([A-G](?:#|b)?))?$/);
+  return match ? { root: match[1], quality: match[2], bass: match[3] || "" } : null;
 }
 
-function transposeChord(chord: string, semitones: number) {
-  return chord.replace(/(^|\/)([A-G](?:#|b)?)/g, (_, slash, note) => `${slash}${transposeNote(note, semitones)}`);
+function degreeForNote(note: string, tonic: string) {
+  return nashvilleDegrees[(noteValues[note] - noteValues[normalizeKey(tonic)] + 12) % 12];
 }
 
-function transposeChordLine(text: string, semitones: number) {
+function chordToNashville(chord: string, tonic: string) {
+  const parsed = parseChord(chord);
+  if (!parsed) return chord;
+  const bass = parsed.bass ? `/${degreeForNote(parsed.bass, tonic)}` : "";
+  return `${degreeForNote(parsed.root, tonic)}${parsed.quality}${bass}`;
+}
+
+function chordFromNashville(chord: string, sourceKey: string, targetKey: string) {
+  const parsed = parseChord(chord);
+  if (!parsed) return chord;
+  const sourceTonic = noteValues[normalizeKey(sourceKey)];
+  const targetTonic = noteValues[normalizeKey(targetKey)];
+  const rootDegree = (noteValues[parsed.root] - sourceTonic + 12) % 12;
+  const root = chromatic[(targetTonic + rootDegree) % 12];
+  const bass = parsed.bass
+    ? `/${chromatic[(targetTonic + noteValues[parsed.bass] - sourceTonic + 12) % 12]}`
+    : "";
+  return `${root}${parsed.quality}${bass}`;
+}
+
+function transposeChordLine(text: string, sourceKey: string, targetKey: string) {
   const parts = text.split(/(\s+|\|)/);
   let found = 0;
   const result = parts.map((part) => {
     if (chordPattern.test(part)) {
       found += 1;
-      return transposeChord(part, semitones);
+      return chordFromNashville(part, sourceKey, targetKey);
     }
     return part;
   }).join("");
@@ -52,6 +73,8 @@ export default function Home() {
   const [detectedCount, setDetectedCount] = useState(0);
   const [notice, setNotice] = useState("");
   const [exporting, setExporting] = useState(false);
+  const [detectedChords, setDetectedChords] = useState<string[]>([]);
+  const nashvillePreview = detectedChords.map((chord) => chordToNashville(chord, originalKey));
 
   function chooseFile(selected?: File) {
     if (selected?.type === "application/pdf" || selected?.name.endsWith(".pdf")) {
@@ -71,15 +94,21 @@ export default function Home() {
       const bytes = new Uint8Array(await file.arrayBuffer());
       const document = await pdfjs.getDocument({ data: bytes }).promise;
       let count = 0;
+      const chords: string[] = [];
       for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
         setStep(Math.min(3, Math.ceil((pageNumber / document.numPages) * 3)));
         const page = await document.getPage(pageNumber);
         const content = await page.getTextContent();
         for (const item of content.items) {
-          if ("str" in item) count += transposeChordLine(item.str, 0).found;
+          if (!("str" in item)) continue;
+          count += transposeChordLine(item.str, originalKey, key).found;
+          item.str.split(/(\s+|\|)/).forEach((part) => {
+            if (chordPattern.test(part) && chords.length < 20) chords.push(part);
+          });
         }
       }
       setDetectedCount(count);
+      setDetectedChords(chords);
       setStep(5);
       setStatus("ready");
       setNotice(count ? `${count} cifra${count === 1 ? "" : "s"} reconhecida${count === 1 ? "" : "s"} no PDF.` : "Não encontrei cifras em texto. O arquivo pode ser escaneado ou usar símbolos vetoriais.");
@@ -104,9 +133,7 @@ export default function Home() {
       const output = await PDFDocument.load(originalBytes);
       const bold = await output.embedFont(StandardFonts.HelveticaBold);
       const mono = await output.embedFont(StandardFonts.CourierBold);
-      const from = chromatic.indexOf(normalizeKey(originalKey));
       const to = chromatic.indexOf(normalizeKey(key));
-      const semitones = (to - from + 12) % 12;
       let replacements = 0;
 
       for (let pageNumber = 1; pageNumber <= source.numPages; pageNumber += 1) {
@@ -115,7 +142,7 @@ export default function Home() {
         const targetPage = output.getPage(pageNumber - 1);
         for (const rawItem of content.items) {
           if (!("str" in rawItem) || !("transform" in rawItem)) continue;
-          const changed = transposeChordLine(rawItem.str, semitones);
+          const changed = transposeChordLine(rawItem.str, originalKey, key);
           if (!changed.found || changed.text === rawItem.str) continue;
           const x = rawItem.transform[4];
           const y = rawItem.transform[5];
@@ -130,7 +157,8 @@ export default function Home() {
       const tabPage = output.addPage([595.28, 841.89]);
       tabPage.drawText("CLAVE — FRASES DE CONTRABAIXO", { x: 48, y: 786, size: 17, font: bold, color: rgb(0.08, 0.16, 0.13) });
       tabPage.drawText(`Tom: ${normalizeKey(key)}   |   Baixo de 4 cordas: E-A-D-G   |   Estilo: ${style}`, { x: 48, y: 760, size: 10, font: bold });
-      tabPage.drawText("Use as frases nas transicoes entre secoes. Ajuste o ritmo ao groove da musica.", { x: 48, y: 738, size: 9, font: bold, color: rgb(0.35, 0.4, 0.36) });
+      tabPage.drawText(`Nashville: ${nashvillePreview.map((item) => item.replace("♭", "b").replace("♯", "#")).join(" | ").slice(0, 72)}`, { x: 48, y: 738, size: 9, font: bold, color: rgb(0.9, 0.37, 0.18) });
+      tabPage.drawText("Use as frases nas transicoes entre secoes. Ajuste o ritmo ao groove da musica.", { x: 48, y: 718, size: 9, font: bold, color: rgb(0.35, 0.4, 0.36) });
       const tonic = to;
       const fifth = (tonic + 7) % 12;
       const octaveFret = (tonic - 4 + 12) % 12;
@@ -141,7 +169,7 @@ export default function Home() {
       ["FRASE 3 — final de secao", `G|----------------|`, `D|-${String(fifthFret).padStart(2, "-")}--${String(fifthFret + 2).padStart(2, "-")}--${String(fifthFret + 4).padStart(2, "-")}-----|`, `A|-------------${String(fifthFret).padStart(2, "-")}-|`, `E|----------------|`],
       ];
       phrases.forEach((phrase, index) => {
-        const top = 680 - index * 175;
+        const top = 665 - index * 175;
         phrase.forEach((line, lineIndex) => tabPage.drawText(line, { x: 60, y: top - lineIndex * 24, size: lineIndex ? 13 : 11, font: lineIndex ? mono : bold, color: lineIndex ? rgb(0.08, 0.16, 0.13) : rgb(0.9, 0.37, 0.18) }));
       });
       tabPage.drawText("Tablatura sugerida: valide digitacao, tessitura e contexto harmonico antes da apresentacao.", { x: 48, y: 80, size: 8, font: bold, color: rgb(0.4, 0.43, 0.4) });
@@ -238,6 +266,13 @@ export default function Home() {
             </div>
           )}
           {notice && <p className={`notice ${detectedCount ? "ok" : ""}`}>{notice}</p>}
+          {status === "ready" && nashvillePreview.length > 0 && (
+            <div className="nashvilleBox">
+              <span>SISTEMA NASHVILLE · TOM {originalKey}</span>
+              <div>{nashvillePreview.map((item, index) => <b key={`${item}-${index}`}>{item}</b>)}</div>
+              <small>Os graus são reconstruídos automaticamente no tom de {key}.</small>
+            </div>
+          )}
 
           <button className="primaryBtn" onClick={status === "ready" ? downloadPDF : analyze} disabled={!file || status === "reading" || exporting}>
             <span>{exporting ? "Gerando o PDF…" : status === "reading" ? "Lendo partitura…" : status === "ready" ? "Baixar PDF com tablatura" : "Interpretar e transpor"}</span>
@@ -250,7 +285,7 @@ export default function Home() {
       {status === "ready" && (
         <section className="result" aria-live="polite">
           <div className="resultHead">
-            <div><span className="success">✓ CIFRAS RECONHECIDAS</span><h2>Seu novo PDF está pronto.</h2><p>De {originalKey} para {key} · Tablatura E–A–D–G · {bass}% de detalhes</p></div>
+            <div><span className="success">✓ TRANSPOSIÇÃO NASHVILLE</span><h2>Seu novo PDF está pronto.</h2><p>De {originalKey} para {key} · Graus Nashville · Tablatura E–A–D–G</p></div>
             <button onClick={downloadPDF} disabled={exporting}>{exporting ? "Gerando PDF…" : "Baixar PDF com tablatura"} <span>↓</span></button>
           </div>
           <div className="sheet">
@@ -272,7 +307,7 @@ export default function Home() {
 
       <section className="features" id="recursos">
         <p>FEITO PARA QUEM OUVE ALÉM DAS NOTAS</p>
-        <div><span>Leitura musical</span><span>Transposição precisa</span><span>Contrabaixo inteligente</span><span>Exportação editável</span></div>
+        <div><span>Leitura musical</span><span>Sistema Nashville</span><span>Contrabaixo inteligente</span><span>Exportação em PDF</span></div>
       </section>
 
       <footer><a className="brand" href="#"><span className="brandMark">𝄞</span><span>CLAVE</span></a><p>A essência permanece. O arranjo evolui.</p><small>Protótipo experimental · 2026</small></footer>
